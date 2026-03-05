@@ -21,13 +21,11 @@ def generate_adapted_guideline(source_file_path: str, target_domain: str, sample
 
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
 
-    yaml_path = os.path.join(ROOT_DIR, "Prompt", "agent_prompt.yaml")
+    yaml_path = os.path.join(ROOT_DIR, "prompts", "agent_prompt.yaml")
     prompt_str = load_prompt_from_yaml(yaml_path, "adapt_agent", "system_prompt")
     
     prompt = ChatPromptTemplate.from_template(prompt_str)
     chain = prompt | llm
-
-    print("Đang phân tích và sinh Guideline mới qua Google AI Studio...")
     response = chain.invoke({
         "source_guideline_content": source_guideline_content,
         "target_domain_name": target_domain,
@@ -48,7 +46,7 @@ def generate_adapted_guideline(source_file_path: str, target_domain: str, sample
     with open(output_file_path, "w", encoding="utf-8") as f:
         f.write(adapted_content.strip())
         
-    print(f"--- THÀNH CÔNG! Đã lưu Guideline mới tại: {output_file_path} ---")
+    print(f"Đã lưu Guideline mới tại: {output_file_path} ---")
 
 if __name__ == "__main__":
     sample_data = """

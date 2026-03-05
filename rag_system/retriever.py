@@ -1,18 +1,18 @@
 import os
+from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 
-# CẤU HÌNH API
-GOOGLE_API_KEY = "AIzaSyBrwzeGRALqrf2Hdl0s7cXnwr6QqqpOk-Q"  # Nhớ thay key của bạn
-os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+# Load API key từ file .env
+load_dotenv()
 
 class ACSARetriever:
     def __init__(self, base_dir=r"D:\Project\multi agent\work"):
         
+
         self.embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
         
-        
-        guideline_path = os.path.join(base_dir, "chroma_db_acsa")
+        guideline_path = os.path.join(base_dir, "system_data", "chroma_db")
         if os.path.exists(guideline_path):
             self.db_guideline = Chroma(persist_directory=guideline_path, embedding_function=self.embeddings)
             print("Đã load DB Guideline.")
@@ -20,8 +20,7 @@ class ACSARetriever:
             self.db_guideline = None
             print("Chưa tìm thấy DB Guideline.")
 
-       
-        gold_path = os.path.join(base_dir, "chroma_db_verified_examples")
+        gold_path = os.path.join(base_dir, "system_data", "chroma_db_verified")
         if os.path.exists(gold_path):
             self.db_gold = Chroma(persist_directory=gold_path, embedding_function=self.embeddings)
             print(" Đã load DB Verified Examples (Án lệ).")
@@ -54,15 +53,12 @@ class ACSARetriever:
         
         return f"{guideline_txt}\n\n{example_txt}"
 
-
 if __name__ == "__main__":
     rag = ACSARetriever()
-    new_review = "Mạng mẽo ở quán chán quá, quay vòng vòng không xem được Youtube."
+    new_review = "Phòng ốc rộng rãi, sạch sẽ nhưng thái độ nhân viên lễ tân hơi kém."
     
-    print(f"\n🔍 Input Review: {new_review}")
+    print(f"\n[Test RAG] Input Review: {new_review}")
     print("-" * 50)
     
-    # Lấy thông tin
     full_context = rag.get_combined_context(new_review)
-    
     print(full_context)

@@ -34,7 +34,7 @@ adapt_agent:
 annotator_agent:
   system_prompt: |
     # ROLE
-    You are an **Expert ACSA (Aspect-Category Sentiment Analysis) Annotator**. Your task is to accurately extract the (Entity#Attribute, Sentiment) pairs from customer reviews.
+    You are an **Expert ACSA (Aspect-Category Sentiment Analysis) Annotator**. Your task is to accurately extract ALL (Entity#Attribute, Sentiment) pairs from customer reviews.
 
     # INPUT DATA
     1. **Target Review:** "{target_review}"
@@ -43,20 +43,32 @@ annotator_agent:
        *(Use these specific rules as the absolute truth for your labeling)*
 
     # TASK
-    Read the Target Review carefully. Based strictly on the provided ACSA Guidelines, assign the correct Entity, Attribute, and Sentiment.
+    Read the Target Review carefully. Based strictly on the provided ACSA Guidelines, extract EVERY distinct Entity, Attribute, and Sentiment mentioned in the review. A single review often contains MULTIPLE aspects (e.g., room size, cleanliness, and staff attitude). YOU MUST EXTRACT ALL OF THEM.
 
     # CRITICAL RULES
-    - Only use the valid Entity and Attribute combinations explicitly mentioned in the Guidelines.
-    - Provide a brief, logical reasoning for your choice, citing the specific guideline rule.
+    - Only use the valid Entity and Attribute combinations explicitly mentioned in the Guidelines (use the exact English terms from the rules, do NOT invent your own terms or translate to Vietnamese like "Diện tích").
+    - For each pair, extract the exact "opinion" directly from the review (the specific words or phrases expressing the sentiment).
+    - Provide "evidence" by briefly citing the specific guideline rule that justifies your Entity and Attribute selection.
+    - Do not stop at the first match. Find all relevant pairs.
 
     # OUTPUT FORMAT
-    Return ONLY a valid JSON object. Do not include markdown tags like ```json.
-    {{
-      "entity": "ENTITY_NAME",
-      "attribute": "ATTRIBUTE_NAME",
-      "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
-      "reasoning": "Brief explanation citing the guideline."
-    }}
+    Return ONLY a valid JSON ARRAY of objects. Do not include markdown tags like ```json.
+    [
+      {{
+        "entity": "ENTITY_NAME",
+        "attribute": "ATTRIBUTE_NAME",
+        "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
+        "opinion": "Exact words or phrase from the review expressing the sentiment.",
+        "evidence": "Brief citation of the specific guideline rule used."
+      }},
+      {{
+        "entity": "ANOTHER_ENTITY_NAME",
+        "attribute": "ANOTHER_ATTRIBUTE_NAME",
+        "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
+        "opinion": "Exact words or phrase from the review expressing the sentiment.",
+        "evidence": "Brief citation of the specific guideline rule used."
+      }}
+    ]
 
 judge_agent:
   system_prompt: |
