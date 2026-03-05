@@ -1,173 +1,125 @@
 """
-Debate Prompt Templates
+Debate & Summary Prompt Templates
 
-Contains prompt templates for debate agents and summary agent
-Enforces strict rules:
-- Agents must maintain initial positions
-- Must cite specific guideline sections
-- Must reference opponent's previous round correctly
-- Summary agent condenses full responses into 2-3 sentences
+Each annotator defends their FULL label set (not individual conflict pairs).
+Agents argue about ALL labels simultaneously; judge picks ONE overall winner.
 """
 
 
 def create_debate_prompt_template() -> str:
     """
-    Create prompt template for debate agents
-    
-    Returns:
-        Formatted prompt template string with placeholders for:
-        - review_text
-        - conflict_entity, conflict_attribute
-        - guideline_content
-        - my_name, my_entity, my_attribute, my_sentiment
-        - opponent_name, opponent_entity, opponent_attribute, opponent_sentiment
-        - conversation_history
-        - opponent_last_round
+    Create prompt template for debate agents.
+
+    Annotators defend ALL their labels against the opponent's full label set.
+    Focus on labels that DIFFER from the opponent.
+
+    Placeholders:
+        review_text, guideline_content,
+        my_name, my_labels_text, opponent_name, opponent_labels_text,
+        differing_summary, conversation_history, opponent_last_round,
+        my_labels_json_block, differing_labels_hints, num_my_labels
     """
-    
+
     template = """# ROLE
-Bạn là một **Chuyên gia Gán nhãn ACSA (Annotator)** đang tham gia vào một cuộc thảo luận chuyên môn với một đồng nghiệp khác. Mục tiêu của cuộc thảo luận là đạt được sự đồng thuận về nhãn (Entity#Attribute, Sentiment) cho câu review của khách hàng.
+Bạn là **{my_name}** — Chuyên gia Gán nhãn ACSA đang tranh luận bảo vệ bộ nhãn của mình.
+Mục tiêu: bảo vệ **TOÀN BỘ** bộ nhãn ban đầu của bạn và chứng minh bộ nhãn của đối thủ kém chính xác hơn.
+
+---
 
 # INPUT DATA
-Bạn được cung cấp các thông tin sau:
 
-1. **Target Review:** {review_text}
+## 1. Câu Review:
+**"{review_text}"**
 
-2. **Conflict Aspect:** Đang tranh luận về aspect **{conflict_entity}#{conflict_attribute}**
+## 2. Bộ nhãn của BẠN ({my_name}) — GIỮ NGUYÊN ĐẾN HẾT:
+{my_labels_text}
 
-3. **ACSA GUIDELINES (Luật chuẩn):**
+## 3. Bộ nhãn của ĐỐI THỦ ({opponent_name}):
+{opponent_labels_text}
+
+## 4. Nhãn BẤT ĐỒNG (khác nhau giữa 2 bên):
+{differing_summary}
+
+## 5. ACSA GUIDELINES (Luật chuẩn):
 {guideline_content}
 
-*(Hãy sử dụng định nghĩa này làm CHÂN LÝ để bảo vệ quan điểm hoặc sửa lỗi)*
-
-4. **My Position (Quan điểm của BẠN - {my_name}):** 
-   - Entity: {my_entity}
-   - Attribute: {my_attribute}
-   - Sentiment: {my_sentiment}
-
-5. **Opponent Position (Quan điểm ĐỐI THỦ - {opponent_name}):** 
-   - Entity: {opponent_entity}
-   - Attribute: {opponent_attribute}
-   - Sentiment: {opponent_sentiment}
-
-6. **Debate History (Lịch sử tranh luận):**
+## 6. Lịch sử Tranh luận:
 {conversation_history}
 
-**THÔNG TIN ROUND QUAN TRỌNG:**
-- Round cuối cùng của đối thủ ({opponent_name}): **Round {opponent_last_round}**
-- Bạn PHẢI viết opinion: "Phản biện lại {{{{opponent_name}}}} ở round {opponent_last_round} trước đó, ..."
-- Ví dụ chính xác: "Phản biện lại {{{{opponent_name}}}} ở round {opponent_last_round} trước đó, tôi khẳng định..."
-- Nếu round {opponent_last_round} = 0, viết: "Phản biện lại {{{{opponent_name}}}} ở round 0 (quan điểm ban đầu), ..."
+**THÔNG TIN ROUND:**
+- Round cuối cùng của {opponent_name}: **Round {opponent_last_round}**
+- Bạn PHẢI bắt đầu opinion: "Phản biện lại {opponent_name} ở round {opponent_last_round} trước đó, ..."
+- Nếu round = 0: "Phản biện lại {opponent_name} ở round 0 (quan điểm ban đầu), ..."
+
+---
 
 # TASK
-Dựa trên `Debate History` và `ACSA GUIDELINES`, hãy đưa ra câu phản hồi tiếp theo để BẢO VỆ quan điểm ban đầu của bạn.
+Bảo vệ **TOÀN BỘ** bộ nhãn của bạn. Tập trung đặc biệt vào các nhãn BẤT ĐỒNG ở mục 4.
 
-# PROCEDURE (Quy trình suy luận)
-1. **Re-evaluate:** Đọc lại câu Review và đối chiếu kỹ với `ACSA GUIDELINES`.
-2. **Analyze Opponent:** Xem xét lý lẽ của đối thủ và tìm điểm yếu trong lập luận của họ.
-   - Họ có hiểu sai luật không? (Ví dụ: Họ chọn AMBIENCE nhưng luật nói Wifi là RESTAURANT#MISCELLANEOUS).
-   - Họ có bỏ sót từ phủ định/teencode không?
-   - Họ có trích dẫn sai Guideline không?
-3. **Formulate Response:**
-   - **BẮT BUỘC:** GIỮ NGUYÊN quan điểm ban đầu của BẠN, KHÔNG ĐƯỢC thay đổi label.
-   - Chỉ ra lỗi sai của đối thủ dựa trên TRÍCH DẪN CỤ THỂ từ Guideline.
-   - Bảo vệ quan điểm của bạn bằng bằng chứng từ review text và Guideline.
+# PROCEDURE
+1. **Đọc lại câu Review** và đối chiếu từng nhãn của BẠN với ACSA GUIDELINES.
+2. **Với mỗi nhãn BẤT ĐỒNG**: chỉ ra tại sao nhãn của bạn đúng và đối thủ sai.
+3. **Trả lời tổng hợp**: Một response duy nhất bao gồm lập luận cho TẤT CẢ nhãn bất đồng.
 
 # CRITICAL RULES
-- **GIỮ NGUYÊN QUAN ĐIỂM:** BẠN PHẢI GIỮ NGUYÊN nhãn ban đầu của mình cho đến hết cuộc tranh luận, KHÔNG ĐƯỢC thay đổi.
-- **Trích dẫn cụ thể:** Mọi lập luận phải trích dẫn NGUYÊN VĂN từ `ACSA GUIDELINES`. Ví dụ: "Theo mục 2.1 của Guideline: 'Nhân viên phục vụ thuộc entity SERVICE'" - phải ghi rõ số mục và nội dung trích dẫn.
-- **Evidence chi tiết:** Trường `evidence` BẮT BUỘC phải có trích dẫn cụ thể từ Guideline, không được chung chung.
-- **Văn phong:** Chuyên nghiệp, tập trung vào logic, không công kích cá nhân.
-- **Ngôn ngữ:** TẤT CẢ câu trả lời PHẢI viết bằng TIẾNG VIỆT.
+- **GIỮ NGUYÊN TOÀN BỘ nhãn ban đầu**: KHÔNG thay đổi bất kỳ entity/attribute/sentiment nào.
+- **Mảng `labels` PHẢI có đúng {num_my_labels} phần tử** — COPY từ bảng dưới.
+- **Opinion tổng hợp**: Lập luận bao quát tất cả nhãn bất đồng.
+- **Trích dẫn Guideline cụ thể**: Mọi lập luận phải có số mục + nội dung nguyên văn.
+- **Ngôn ngữ**: TIẾNG VIỆT toàn bộ.
 
 # OUTPUT FORMAT
-Trả về JSON Object với cấu trúc sau:
+**LABELS BẠN PHẢI TRẢ VỀ (COPY NGUYÊN XI, KHÔNG ĐỔI GÌ):**
+{my_labels_json_block}
 
+JSON đầy đủ:
 {{{{
-  "label": {{{{
-    "entity": "<FOOD|DRINKS|SERVICE|AMBIENCE|LOCATION|RESTAURANT>",
-    "attribute": "<QUALITY|PRICES|STYLE&OPTIONS|GENERAL|MISCELLANEOUS>",
-    "sentiment": "<positive|negative|neutral>"
-  }}}},
-  "opinion": "<Lập luận chi tiết bằng tiếng Việt. BẮT BUỘC PHẢI bắt đầu bằng: 'Phản biện lại {{{{opponent_name}}}} ở round [số round của đối thủ ở lượt TRƯỚC] trước đó, ...'. Sau đó giải thích TẤT CẢ lý do tại sao quan điểm của BẠN đúng và đối thủ sai. Trình bày ĐẦY ĐỦ, CHI TIẾT, KHÔNG giới hạn độ dài. Trích dẫn nhiều phần từ Guideline nếu cần>",
-  "evidence": "<PHẢI trích dẫn CỤ THỂ từ Guideline với số mục + nội dung nguyên văn. VD: 'Theo mục 2.1 của Guideline: [trích nguyên văn]' HOẶC 'Guideline mục 3 nêu: [nội dung]'. Có thể trích dẫn NHIỀU mục nếu cần>"
+  "labels": <COPY NGUYÊN GIÁ TRỊ TỪ BẢNG TRÊN — đúng {num_my_labels} phần tử>,
+  "opinion": "<Lập luận tổng hợp. BẮT BUỘC bắt đầu: 'Phản biện lại {opponent_name} ở round {opponent_last_round} trước đó, ...'. Sau đó lập luận CHO TỪNG NHÃN BẤT ĐỒNG: tại sao nhãn của BẠN đúng, đối thủ sai. VIẾT ĐẦY ĐỦ, chi tiết.>",
+  "evidence": "<Trích dẫn Guideline THỰC TẾ và CỤ THỂ cho TỪNG nhãn bất đồng theo format:
+{differing_labels_hints}>"
 }}}}
 
-**LƯU Ý CỰC KỲ QUAN TRỌNG:**
-- BẠN PHẢI GIỮ NGUYÊN nhãn ban đầu (entity, attribute, sentiment) CHO ĐẾN HẾT
-- Opinion PHẢI nêu rõ: "Phản biện lại {{{{opponent}}}} ở round X TRƯỚC ĐÓ" (KHÔNG phải "tại round hiện tại")
-- Evidence BẮT BUỘC trích dẫn cụ thể: "Theo mục 2.1: '[nội dung nguyên văn]'"
-- Ví dụ đúng: "Phản biện lại A2 ở round 0 trước đó, tôi khẳng định..."
-- Hãy viết ĐẦY ĐỦ, CHI TIẾT, KHÔNG giới hạn độ dài opinion và evidence
+**RÀNG BUỘC BẮT BUỘC:**
+- Mảng `labels` PHẢI có đúng {num_my_labels} phần tử, COPY nguyên xi từ bảng trên
+- `evidence` PHẢI chứa nội dung Guideline thực tế, KHÔNG dùng [nội dung] hay placeholder
+- `opinion` PHẢI đề cập từng nhãn bất đồng một cách cụ thể
 """
-    
+
     return template
 
 
 def create_summary_prompt_template() -> str:
     """
-    Create prompt template for summary agent
-    
-    This prompt instructs the LLM to condense a full debate response
-    into a concise 2-3 sentence version while maintaining the required format.
-    
-    Returns:
-        Formatted prompt template string with placeholders for:
-        - full_response (the complete debate response to be summarized)
-        - agent_name
-        - opponent_name
-        - round_number
+    Create prompt template for summary agent (multi-label support).
+
+    Placeholders: full_response, agent_name, opponent_name, round_number, num_conflicts
     """
-    
+
     template = """# ROLE
-Bạn là một **Summary Agent** có nhiệm vụ tóm tắt lập luận từ cuộc tranh luận ACSA.
+Bạn là **Summary Agent** — tóm tắt lập luận từ cuộc tranh luận ACSA đa nhãn.
 
 # TASK
-Bạn nhận được một response ĐẦY ĐỦ từ debate agent. Nhiệm vụ của bạn là TÓM TẮT nội dung này thành phiên bản NGẮN GỌN (2-3 câu) nhưng vẫn giữ đầy đủ thông tin quan trọng:
-- Label (entity, attribute, sentiment) - GIỮ NGUYÊN
-- Opinion - Tóm tắt lại thành 2-3 câu, BẮT BUỘC giữ cấu trúc "Phản biện lại {{opponent_name}} ở round {{round_number}} trước đó, ..."
-- Evidence - Tóm tắt trích dẫn Guideline quan trọng nhất (1-2 trích dẫn)
+Đọc kỹ Full Response bên dưới rồi tóm tắt thành ngắn gọn hơn, giữ đủ thông tin:
+- `labels`: COPY NGUYÊN XI từ Full Response — KHÔNG thay đổi bất kỳ giá trị nào
+- `opinion`: 2-3 câu tóm tắt, BẮT BUỘC bắt đầu "Phản biện lại {opponent_name} ở round {round_number} trước đó, ..."
+- `evidence`: Giữ lại 1-2 trích dẫn Guideline quan trọng nhất, PHẢI trích nguyên văn nội dung rule — KHÔNG viết [nội dung] hay để trống
 
-# INPUT
-**Full Response from {agent_name}:**
-```json
+# INPUT — FULL RESPONSE CẦN TÓM TẮT
+Agent: {agent_name} | Đang phản biện: {opponent_name} | Round: {round_number} | Số conflict: {num_conflicts}
+
 {full_response}
-```
-
-**Context:**
-- Agent name: {agent_name}
-- Opponent name: {opponent_name}
-- Round being referenced: {round_number}
-
-# INSTRUCTIONS
-1. **Giữ nguyên label**: Entity, attribute, sentiment PHẢI GIỐNG CHÍNH XÁC với full response
-2. **Tóm tắt opinion**: 
-   - BẮT BUỘC bắt đầu bằng: "Phản biện lại {{opponent_name}} ở round {{round_number}} trước đó, ..."
-   - Chỉ giữ lại ý chính (2-3 câu tối đa)
-   - Loại bỏ phần dài dòng, chi tiết thừa
-3. **Tóm tắt evidence**: 
-   - Chỉ giữ 1-2 trích dẫn quan trọng nhất từ Guideline
-   - Format: "Theo mục X: [nội dung]"
-4. **Output phải ngắn gọn**: Tổng độ dài opinion + evidence không quá 150-200 từ
 
 # OUTPUT FORMAT
-Trả về JSON Object với cấu trúc sau:
+{{
+  "labels": <COPY NGUYÊN XI danh sách labels từ Full Response trên>,
+  "opinion": "<2-3 câu. BẮT BUỘC bắt đầu: Phản biện lại {opponent_name} ở round {round_number} trước đó, ... Tóm tắt lập luận cho từng conflict>",
+  "evidence": "<Trích nguyên văn 1-2 rule từ Guideline trong Full Response. VÍ DỤ ĐÚNG: 'Theo Guideline mục 4.2: Tính từ mô tả hương vị kèm cảm xúc hài lòng → DRINKS#QUALITY = positive'. TUYỆT ĐỐI KHÔNG viết dạng [nội dung]>"
+}}
 
-{{{{
-  "label": {{{{
-    "entity": "<GIỮ NGUYÊN>",
-    "attribute": "<GIỮ NGUYÊN>",
-    "sentiment": "<GIỮ NGUYÊN>"
-  }}}},
-  "opinion": "<TÓM TẮT 2-3 câu. BẮT BUỘC bắt đầu: 'Phản biện lại {{opponent_name}} ở round {{round_number}} trước đó, ...'>",
-  "evidence": "<TÓM TẮT trích dẫn Guideline quan trọng nhất. VD: 'Theo mục 2.1: [nội dung]'>" 
-}}}}
-
-**CRITICAL RULES:**
-- Label PHẢI GIỐNG CHÍNH XÁC với input
-- Opinion PHẢI bắt đầu đúng format: "Phản biện lại {{opponent_name}} ở round {{round_number}} trước đó"
-- Tổng độ dài phải NGẮN GỌN (2-3 câu cho opinion, 1-2 trích dẫn cho evidence)
-- Chỉ giữ lại ý chính, loại bỏ chi tiết dài dòng
+**RÀNG BUỘC:**
+- `labels` phải có đúng {num_conflicts} phần tử, COPY từ Full Response
+- `evidence` phải chứa nội dung rule thực tế, không phải placeholder
 """
-    
+
     return template

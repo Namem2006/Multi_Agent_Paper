@@ -11,7 +11,7 @@ Responsible for:
 import json
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage
-from models.schemas import DebateState, DebateResponse, ACSALabel
+from models.schemas import DebateState, MultiLabelDebateResponse, ACSALabel
 from memory_and_history.history_manager import HistoryManager
 from prompts.debate_prompts import create_summary_prompt_template
 from config.llm_config import get_llm
@@ -39,49 +39,37 @@ class SummaryAgent:
         self.llm = llm if llm is not None else get_llm()
         self.summary_prompt_template = create_summary_prompt_template()
     
-    def summarize_response(self, full_response: Dict[str, Any], agent_name: str, opponent_name: str, round_number: int) -> Dict[str, Any]:
+    def summarize_response(
+        self,
+        full_response: Dict[str, Any],
+        agent_name: str,
+        opponent_name: str,
+        round_number: int
+    ) -> Dict[str, Any]:
         """
-        Summarize a full debate response into concise 2-3 sentence version using LLM
-        
-        Takes a detailed debate response and condenses it while maintaining:
-        - Exact same label (entity, attribute, sentiment)
-        - Core opinion starting with "Phản biện lại [opponent] ở round X trước đó"
-        - Most important evidence citations
-        
-        Args:
-            full_response: Complete debate response with long opinion and evidence
-            agent_name: Name of the agent who generated this response (A1 or A2)
-            opponent_name: Name of the opponent (A2 or A1)
-            round_number: The round number being referenced in the response
-            
-        Returns:
-            Summarized response with same structure but shorter content
+        Summarize a full multi-label debate response into 2-3 sentences using LLM.
+
+        Preserves all labels exactly, condenses opinion + evidence.
         """
-        # Build prompt for summarization
+        num_conflicts = len(full_response.get("labels", []))
         full_response_json = json.dumps(full_response, ensure_ascii=False, indent=2)
-        
+
         prompt = self.summary_prompt_template.format(
             full_response=full_response_json,
             agent_name=agent_name,
             opponent_name=opponent_name,
-            round_number=round_number
+            round_number=round_number,
+            num_conflicts=num_conflicts
         )
-        
-        # Call LLM to get summarized version
+
         messages = [HumanMessage(content=prompt)]
-        response = self.llm.with_structured_output(DebateResponse).invoke(messages)
-        
-        # Convert to dict
+        response = self.llm.with_structured_output(MultiLabelDebateResponse).invoke(messages)
+
         summarized = {
-            "label": {
-                "entity": response.label.entity,
-                "attribute": response.label.attribute,
-                "sentiment": response.label.sentiment
-            },
+            "labels": full_response["labels"],  # ALWAYS copy original — never let LLM regenerate
             "opinion": response.opinion,
             "evidence": response.evidence
         }
-        
         return summarized
     
     def record_response(self, state: DebateState) -> DebateState:
