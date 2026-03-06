@@ -37,8 +37,9 @@ annotator_agent:
     You are an **Expert ACSA (Aspect-Category Sentiment Analysis) Annotator**. Your task is to accurately extract ALL (Entity#Attribute, Sentiment) pairs from customer reviews.
 
     # INPUT DATA
-    1. **Target Review:** "{target_review}"
-    2. **ACSA GUIDELINES (Retrieved Context):**
+    1. **Review ID:** "{review_id}"
+    2. **Target Review:** "{target_review}"
+    3. **ACSA GUIDELINES (Retrieved Context):**
        {retrieved_guidelines}
        *(Use these specific rules as the absolute truth for your labeling)*
 
@@ -55,6 +56,7 @@ annotator_agent:
     Return ONLY a valid JSON ARRAY of objects. Do not include markdown tags like ```json.
     [
       {{
+        "review_id": "Exact ID provided in the input",
         "entity": "ENTITY_NAME",
         "attribute": "ATTRIBUTE_NAME",
         "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
@@ -62,6 +64,7 @@ annotator_agent:
         "evidence": "Brief citation of the specific guideline rule used."
       }},
       {{
+        "review_id": "Exact ID provided in the input",
         "entity": "ANOTHER_ENTITY_NAME",
         "attribute": "ANOTHER_ATTRIBUTE_NAME",
         "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
@@ -69,7 +72,6 @@ annotator_agent:
         "evidence": "Brief citation of the specific guideline rule used."
       }}
     ]
-
 
 root_cause_agent:
   system_prompt: |
@@ -110,17 +112,19 @@ guideline_agent:
        - Suggestion: {suggestion_content}
 
     # TASK
-    Draft an update for the Guideline to prevent this exact conflict from recurring in the future. Provide outputs for two options: a direct fix and a consultation note.
+    Draft an update for the Guideline to prevent this exact conflict from recurring. 
+    WARNING: You must critically evaluate the "Suggestion" provided. Do NOT blindly create a rule that misclassifies clear cultural positive/negative expressions as NEUTRAL just because they are "descriptive".
 
     # CRITICAL RULES
-    1. **Consistency:** The new content must seamlessly match the tone and formatting of the existing Guideline (e.g., uppercase ENTITY names, bullet points format).
-    2. **Clarity:** The new rule must be extremely specific and use definitive language (e.g., "You MUST assign...", "Strictly do NOT use...").
-    3. **Example-driven:** You MUST include at least one short, clear example in the new rule based on the text that caused the conflict.
+    1. **Sentiment Accuracy for Sensory Adjectives (CRUCIAL):** In food/beverage domains, sensory adjectives that convey richness, good aroma, or signature traits (e.g., in Vietnamese: "thơm" - fragrant, "đậm" / "đậm đà" - rich/strong, "đặc trưng" - signature/special) inherently express satisfaction. You MUST classify these as **POSITIVE**, NOT NEUTRAL. Only purely objective, emotionless physical traits (e.g., "trà màu vàng", "cốc size L") are NEUTRAL.
+    2. **Consistency:** The new content must seamlessly match the tone and formatting of the existing Guideline (e.g., uppercase ENTITY#ATTRIBUTE names, bullet points).
+    3. **Clarity & Specificity:** The new rule must be extremely specific and use definitive language (e.g., "You MUST assign..."). It must explicitly list the trigger words.
+    4. **Example-driven:** You MUST include the exact conflicting text (e.g., "vị trà đậm và thơm rất đặc trưng") as a concrete example in the new rule, showing its CORRECT mapping (Entity#Attribute = POSITIVE/NEGATIVE).
 
     # OUTPUT FORMAT
     Return ONLY a valid JSON object. Do not include markdown tags like ```json.
     {{
-      "option_1_direct_content": "The exact, well-formatted text ready to be copy-pasted directly into the Guideline.",
-      "option_2_proposal_note": "A brief explanation of why this rule was formulated this way (for human review).",
-      "target_section": "The specific section name or heading in the Guideline where this should be inserted (e.g., 'Section 4 - Special Cases' or 'Entity: DRINKS')."
+      "option_1_direct_content": "The exact, well-formatted text ready to be copy-pasted directly into the Guideline. (e.g., '- When describing DRINKS#QUALITY, words indicating rich flavor or good aroma (đậm, thơm) MUST be classified as POSITIVE. Example: <vị trà đậm và thơm rất đặc trưng> -> DRINKS#QUALITY = POSITIVE.')",
+      "option_2_proposal_note": "A brief explanation of why this rule accurately reflects human sentiment rather than overly strict neutrality.",
+      "target_section": "The specific section name or heading in the Guideline where this should be inserted (e.g., 'Entity: DRINKS')."
     }}

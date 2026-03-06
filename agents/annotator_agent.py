@@ -54,7 +54,6 @@ def annotate_with_gemini(review_text: str, retrieved_rules: str):
     return clean_json_output(response.content)
 
 def annotate_with_gpt(review_text: str, retrieved_rules: str):
-    # Khởi tạo AzureChatOpenAI theo cấu hình bạn yêu cầu
     llm = AzureChatOpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
         azure_endpoint=os.getenv("BASE_URL"),
