@@ -2,8 +2,8 @@ import os
 import sys
 import json
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_openai import AzureChatOpenAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -33,32 +33,60 @@ def clean_json_output(output: str):
     except json.JSONDecodeError:
         return []
 
-def get_retrieved_rules(review_text: str, db_path: str):
-    # Đã sửa lại thành text-embedding-004 để không bị lỗi 404 NOT FOUND
+def get_retrieved_context_for_batch(batch_data: list, base_db_dir: str):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-    vector_db = Chroma(persist_directory=db_path, embedding_function=embeddings)
-    retriever = vector_db.as_retriever(search_kwargs={"k": 3})
-    docs = retriever.invoke(review_text)
-    return "\n\n".join([doc.page_content for doc in docs])
+    combined_review_text = " ".join([item["text"] for item in batch_data])
+    
+    guideline_db_path = os.path.join(base_db_dir, "chroma_db")
+    guidelines_text = ""
+    if os.path.exists(guideline_db_path):
+        vector_db = Chroma(persist_directory=guideline_db_path, embedding_function=embeddings)
+        docs = vector_db.similarity_search(combined_review_text, k=4) 
+        guidelines_text = "\n\n".join([doc.page_content for doc in docs])
+    
+    verified_db_path = os.path.join(base_db_dir, "chroma_db_verified")
+    verified_examples_text = ""
+    if os.path.exists(verified_db_path):
+        vector_db_verified = Chroma(persist_directory=verified_db_path, embedding_function=embeddings)
+        docs_verified = vector_db_verified.similarity_search(combined_review_text, k=3)
+        if docs_verified:
+            verified_examples_text = "\n\n".join([doc.page_content for doc in docs_verified])          
+    if not verified_examples_text.strip():
+        verified_examples_text = "No verified examples available for this context."
 
-def annotate_with_gemini(review_text: str, retrieved_rules: str):
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+    return guidelines_text, verified_examples_text
+
+def annotate_with_deepseek(batch_text_prompt: str, retrieved_guidelines: str, verified_examples: str):
+    nvidia_api_key = os.getenv("NVIDIA_API_KEY")
+    nvidia_base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+
+    if not nvidia_api_key:
+        raise ValueError("[LOI] Thieu NVIDIA_API_KEY trong file .env")
+    llm = ChatOpenAI(
+        api_key=nvidia_api_key,
+        base_url=nvidia_base_url,
+        model="deepseek-ai/deepseek-v3.2",
+        temperature=0.1,
+        extra_body={"chat_template_kwargs": {"thinking": False}} 
+    )
+    
     yaml_path = os.path.join(ROOT_DIR, "prompts", "agent_prompt.yaml")
     prompt_str = load_prompt_from_yaml(yaml_path, "annotator_agent", "system_prompt")
     prompt = ChatPromptTemplate.from_template(prompt_str)
     
     response = (prompt | llm).invoke({
-        "target_review": review_text, 
-        "retrieved_guidelines": retrieved_rules
+        "target_reviews_batch": batch_text_prompt, 
+        "retrieved_guidelines": retrieved_guidelines,
+        "verified_examples": verified_examples
     })
     return clean_json_output(response.content)
 
-def annotate_with_gpt(review_text: str, retrieved_rules: str):
+def annotate_with_gpt(batch_text_prompt: str, retrieved_guidelines: str, verified_examples: str):
     llm = AzureChatOpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
         azure_endpoint=os.getenv("BASE_URL"),
         api_version=os.getenv("API_VERSION"),
-        azure_deployment=os.getenv("DEPLOYMENT_NAME", "gpt-4o-mini"), # Thường Azure bắt buộc khai báo tên Deployment
+        azure_deployment=os.getenv("DEPLOYMENT_NAME", "gpt-4o-mini"), 
         temperature=0.1
     )
     
@@ -67,37 +95,64 @@ def annotate_with_gpt(review_text: str, retrieved_rules: str):
     prompt = ChatPromptTemplate.from_template(prompt_str)
     
     response = (prompt | llm).invoke({
-        "target_review": review_text, 
-        "retrieved_guidelines": retrieved_rules
+        "target_reviews_batch": batch_text_prompt,
+        "retrieved_guidelines": retrieved_guidelines,
+        "verified_examples": verified_examples
     })
     return clean_json_output(response.content)
 
-def process_and_verify_review(review_text: str, db_path: str):
-    # Cập nhật check biến môi trường
+def process_and_verify_batch(batch_data: list, base_db_dir: str):
     api_key_gg = os.getenv("GOOGLE_API_KEY")
     api_key_azure = os.getenv("OPENAI_API_KEY")
     azure_endpoint = os.getenv("BASE_URL")
+    nvidia_api_key = os.getenv("NVIDIA_API_KEY")
     
-    if not api_key_gg or not api_key_azure or not azure_endpoint:
-        raise ValueError("[LỖI] Bạn cần khai báo đủ GOOGLE_API_KEY, OPENAI_API_KEY, và BASE_URL trong file .env")
+    if not api_key_gg or not api_key_azure or not azure_endpoint or not nvidia_api_key:
+        raise ValueError("[LOI] Ban can khai bao du GOOGLE_API_KEY, OPENAI_API_KEY, BASE_URL, va NVIDIA_API_KEY trong file .env")
 
-    print(f"\n[RAG System] Đang lấy luật cho câu: '{review_text}'")
-    rules = get_retrieved_rules(review_text, db_path)
+    batch_text_prompt = ""
+    for item in batch_data:
+        batch_text_prompt += f"Review ID: {item['id']}\nText: {item['text']}\n---\n"
 
-    print("[Annotator 1] Gemini đang gán nhãn...")
-    gemini_result = annotate_with_gemini(review_text, rules)
+    print(f"\n[RAG System] Dang lay luat va an le chung cho Batch ({len(batch_data)} cau)...")
+    rules, verified_ex = get_retrieved_context_for_batch(batch_data, base_db_dir)
 
-    print("[Annotator 2] Azure GPT đang gán nhãn...")
-    gpt_result = annotate_with_gpt(review_text, rules)
+    print(f"[Annotator 1] DeepSeek dang gan nhan cho {len(batch_data)} cau...")
+    deepseek_batch_result = annotate_with_deepseek(batch_text_prompt, rules, verified_ex)
 
-    result = filter_and_route_conflict(review_text, gemini_result, gpt_result)
+    print(f"[Annotator 2] Azure GPT dang gan nhan cho {len(batch_data)} cau...")
+    gpt_batch_result = annotate_with_gpt(batch_text_prompt, rules, verified_ex)
+
+    if not isinstance(deepseek_batch_result, list): deepseek_batch_result = []
+    if not isinstance(gpt_batch_result, list): gpt_batch_result = []
+
+    final_batch_results = []
     
-    return result
+    for item in batch_data:
+        rev_id = item["id"]
+        rev_text = item["text"]
+        
+        # Loc ra nhung nhan thuoc ve cau review dang xet
+        deepseek_labels_for_id = [lbl for lbl in deepseek_batch_result if lbl.get("review_id") == rev_id]
+        gpt_labels_for_id = [lbl for lbl in gpt_batch_result if lbl.get("review_id") == rev_id]
+        
+        # Day tung cau qua bo so sanh va luu DB
+        print(f"\n[Kiem tra] So sanh ket qua cho {rev_id}")
+        res = filter_and_route_conflict(rev_id, rev_text, deepseek_labels_for_id, gpt_labels_for_id)
+        final_batch_results.append(res)
+
+    return final_batch_results
 
 if __name__ == "__main__":
-    db_dir = os.path.join(ROOT_DIR, "system_data", "chroma_db")
-    test_review = "Phòng ốc rộng rãi, sạch sẽ nhưng thái độ nhân viên lễ tân hơi kém."
+    base_system_dir = os.path.join(ROOT_DIR, "system_data")
     
-    result = process_and_verify_review(test_review, db_dir)
-    print("\n[KẾT QUẢ TRẢ VỀ CHO HỆ THỐNG]")
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    # Tao mot batch gom 3 cau de test
+    test_batch = [
+        {"id": "REV_001", "text": "Phòng ốc rộng rãi, sạch sẽ nhưng thái độ nhân viên lễ tân hơi kém."},
+        {"id": "REV_002", "text": "Đồ ăn sáng cực kỳ ngon miệng, buffet đa dạng. Cảnh biển đẹp tuyệt vời."},
+        {"id": "REV_003", "text": "Wifi khách sạn rất chậm, mình không thể làm việc được."}
+    ]
+    
+    results = process_and_verify_batch(batch_data=test_batch, base_db_dir=base_system_dir)
+    print("\n[KET QUA TRA VE CHO HE THONG]")
+    print(json.dumps(results, indent=2, ensure_ascii=False))
