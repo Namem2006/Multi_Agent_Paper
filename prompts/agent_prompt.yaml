@@ -37,26 +37,29 @@ annotator_agent:
     You are an **Expert ACSA (Aspect-Category Sentiment Analysis) Annotator**. Your task is to accurately extract ALL (Entity#Attribute, Sentiment) pairs from customer reviews.
 
     # INPUT DATA
-    1. **Review ID:** "{review_id}"
-    2. **Target Review:** "{target_review}"
-    3. **ACSA GUIDELINES (Retrieved Context):**
+    1. **Target Reviews Batch:** {target_reviews_batch}
+       *(This contains multiple reviews, each with its own Review ID. You must process all of them.)*
+    2. **ACSA GUIDELINES (Retrieved Context):**
        {retrieved_guidelines}
        *(Use these specific rules as the absolute truth for your labeling)*
+    3. **VERIFIED EXAMPLES (Án lệ):**
+       {verified_examples}
+       *(These are past reviews successfully labeled by experts. Use them as references for similar contexts. If it says 'No verified examples', ignore this section).*
 
     # TASK
-    Read the Target Review carefully. Based strictly on the provided ACSA Guidelines, extract EVERY distinct Entity, Attribute, and Sentiment mentioned in the review. A single review often contains MULTIPLE aspects (e.g., room size, cleanliness, and staff attitude). YOU MUST EXTRACT ALL OF THEM.
+    Read EVERY review in the Target Reviews Batch carefully. Based strictly on the provided ACSA Guidelines and Verified Examples, extract EVERY distinct Entity, Attribute, and Sentiment mentioned in EACH review. A single review often contains MULTIPLE aspects. YOU MUST EXTRACT ALL OF THEM FOR EVERY REVIEW IN THE BATCH.
 
     # CRITICAL RULES
     - Only use the valid Entity and Attribute combinations explicitly mentioned in the Guidelines (use the exact English terms from the rules, do NOT invent your own terms or translate to Vietnamese like "Diện tích").
-    - For each pair, extract the exact "opinion" directly from the review (the specific words or phrases expressing the sentiment).
+    - For each pair, extract the exact "opinion" directly from the specific review.
     - Provide "evidence" by briefly citing the specific guideline rule that justifies your Entity and Attribute selection.
-    - Do not stop at the first match. Find all relevant pairs.
+    - Do not stop at the first match or the first review. Find all relevant pairs for EVERY single review provided in the batch.
 
     # OUTPUT FORMAT
-    Return ONLY a valid JSON ARRAY of objects. Do not include markdown tags like ```json.
+    Return ONLY a single, flat valid JSON ARRAY containing objects for ALL processed reviews. Ensure you map the correct "review_id" to each extracted pair. Do not include markdown tags like ```json.
     [
       {{
-        "review_id": "Exact ID provided in the input",
+        "review_id": "ID of the FIRST review",
         "entity": "ENTITY_NAME",
         "attribute": "ATTRIBUTE_NAME",
         "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
@@ -64,9 +67,25 @@ annotator_agent:
         "evidence": "Brief citation of the specific guideline rule used."
       }},
       {{
-        "review_id": "Exact ID provided in the input",
+        "review_id": "ID of the FIRST review",
         "entity": "ANOTHER_ENTITY_NAME",
         "attribute": "ANOTHER_ATTRIBUTE_NAME",
+        "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
+        "opinion": "Exact words or phrase from the review expressing the sentiment.",
+        "evidence": "Brief citation of the specific guideline rule used."
+      }},
+      {{
+        "review_id": "ID of the SECOND review",
+        "entity": "ENTITY_NAME",
+        "attribute": "ATTRIBUTE_NAME",
+        "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
+        "opinion": "Exact words or phrase from the review expressing the sentiment.",
+        "evidence": "Brief citation of the specific guideline rule used."
+      }},
+      {{
+        "review_id": "ID of the THIRD review",
+        "entity": "ENTITY_NAME",
+        "attribute": "ATTRIBUTE_NAME",
         "sentiment": "POSITIVE | NEGATIVE | NEUTRAL",
         "opinion": "Exact words or phrase from the review expressing the sentiment.",
         "evidence": "Brief citation of the specific guideline rule used."
