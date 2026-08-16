@@ -9,10 +9,17 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
 
 from utils.helpers import load_prompt_from_yaml
+from utils.llm_invoke_with_timeout import invoke_with_timeout_and_retry
 
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
-def generate_adapted_guideline(source_file_path: str, target_domain: str, samples: str, output_file_path: str):
+def generate_adapted_guideline(
+    source_file_path: str,
+    target_domain: str,
+    samples: str,
+    output_file_path: str,
+    source_domain: str = "source",
+):
     try:
         with open(source_file_path, "r", encoding="utf-8") as f:
             source_guideline_content = f.read()
@@ -23,7 +30,7 @@ def generate_adapted_guideline(source_file_path: str, target_domain: str, sample
     # THAY ĐỔI: Khởi tạo LLM bằng Azure OpenAI
     api_key_azure = os.getenv("OPENAI_API_KEY")
     azure_endpoint = os.getenv("BASE_URL")
-    
+
     if not api_key_azure or not azure_endpoint:
         raise ValueError("[LỖI] Bạn cần khai báo đủ OPENAI_API_KEY và BASE_URL trong file .env")
 
@@ -37,18 +44,33 @@ def generate_adapted_guideline(source_file_path: str, target_domain: str, sample
 
     yaml_path = os.path.join(ROOT_DIR, "prompts", "agent_prompt.yaml")
     prompt_str = load_prompt_from_yaml(yaml_path, "adapt_agent", "system_prompt")
-    
+
     prompt = ChatPromptTemplate.from_template(prompt_str)
-    chain = prompt | llm
-    
-    print(f"[Adapt Agent] Đang dùng GPT phân tích dữ liệu và tạo luật cho domain '{target_domain}'...")
-    response = chain.invoke({
+
+    print(
+        f"[Adapt Agent] Adapting guideline from domain '{source_domain}' "
+        f"to target domain '{target_domain}'..."
+    )
+    payload = {
         "source_guideline_content": source_guideline_content,
+        "source_domain_name": source_domain,
         "target_domain_name": target_domain,
         "sample_reviews": samples
-    })
+    }
+    messages = prompt.format_messages(**payload)
+    response = invoke_with_timeout_and_retry(
+        llm,
+        messages,
+        agent_name="Adapt Agent",
+        call_type="adapt_agent",
+    )
+    if response is None:
+        print("[ERROR] Adapt Agent failed after retries. No output was generated.")
+        return
 
-    adapted_content = response.content
+    output_text = response.content if hasattr(response, "content") else ""
+
+    adapted_content = output_text
 
     # Làm sạch markdown output nếu có
     if adapted_content.startswith("```markdown"):
@@ -62,7 +84,7 @@ def generate_adapted_guideline(source_file_path: str, target_domain: str, sample
 
     with open(output_file_path, "w", encoding="utf-8") as f:
         f.write(adapted_content.strip())
-        
+
     print(f"[THÀNH CÔNG] Đã lưu Guideline mới tại: {output_file_path} ---")
 
 if __name__ == "__main__":
@@ -73,13 +95,14 @@ if __name__ == "__main__":
     4. "Trải nghiệm tệ! Vòi sen trong phòng tắm bị rỉ nước, gọi nhân viên bảo trì lên sửa thì đợi gần 1 tiếng mới có người lên. Giường ngủ thì cứng đau hết cả lưng."
     5. "Giá phòng đợt lễ có tăng chút đỉnh nhưng chấp nhận được. Không gian yên tĩnh, thích hợp để nghỉ dưỡng. Wifi hơi chập chờn lúc buổi tối."
     """
-    
+
     SOURCE_PATH = os.path.join(ROOT_DIR, "guideline.txt")
     TARGET_DOMAIN = "Hotel"
     OUTPUT_PATH = os.path.join(ROOT_DIR, "adapted_guideline.txt")
-    
+
     generate_adapted_guideline(
         source_file_path=SOURCE_PATH,
+        source_domain="Restaurant",
         target_domain=TARGET_DOMAIN,
         samples=sample_data,
         output_file_path=OUTPUT_PATH

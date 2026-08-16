@@ -1,82 +1,101 @@
-# ROLE: VLSP Restaurant Aspect-Sentiment Labeling Guideline
+ROLE: VLSP Restaurant Aspect-Sentiment Labeling Guideline
 
-# 1. MỤC TIÊU GÁN NHÃN
-Xác định các cặp (Aspect Category, Opinion Polarity) từ câu review của khách hàng.
-- Input: Review văn bản tiếng Việt.
-- Output: List các tuple {(Entity#Attribute, Polarity)}.
-
-# 2. ĐỊNH NGHĨA POLARITY (Cảm xúc)
-- POSITIVE: Khen, tích cực, hài lòng.
-- NEGATIVE: Chê, tiêu cực, thất vọng.
-- NEUTRAL: Trung lập, mô tả khách quan, hoặc chứa cả khen và chê cân bằng nhau, hoặc chỉ nêu thông tin (giá tiền, địa chỉ) mà không đánh giá.
-
-# 3. HỆ THỐNG NHÃN (TAXONOMY)
-Hệ thống gồm 6 Entity chính. Dưới đây là định nghĩa và các cặp Attribute hợp lệ cho từng Entity.
-
-## A. RESTAURANT (Nhà hàng nói chung)
-- Định nghĩa: Đánh giá tổng thể, chung chung về quán, hoặc các khía cạnh không thuộc 5 entity còn lại.
-- Các Attribute hợp lệ:
-  1. GENERAL: Nhận xét chung chung (VD: "Quán này nổi tiếng", "Sẽ quay lại", "Quán đông khách").
-  2. PRICES: Giá cả chung của quán (VD: "Quán giá rẻ", "Giá bình dân", "Tổng thiệt hại 500k cho 4 người").
-  3. MISCELLANEOUS: Các thuộc tính khác (VD: "Có wifi", "Giữ xe miễn phí", "Giờ mở cửa", "Chính sách khuyến mãi").
-  * Lưu ý: "Quán sạch sẽ" -> AMBIENCE#GENERAL (Không dùng RESTAURANT).
-
-## B. FOOD (Đồ ăn)
-- Định nghĩa: Món ăn, đồ tráng miệng, topping (nếu tách riêng), hương vị.
-- Các Attribute hợp lệ:
-  1. QUALITY: Ngon/dở, tươi/ươn, nóng/nguội, vệ sinh an toàn thực phẩm (VD: "Gà ngon", "Đồ ăn sạch sẽ").
-  2. STYLE&OPTIONS: Cách trình bày, menu đa dạng/ít món, khẩu phần nhiều/ít (VD: "Bát phở đầy đặn", "Menu phong phú").
-  3. PRICES: Giá của món ăn cụ thể (VD: "Bát phở 30k là đắt").
-
-## C. DRINKS (Đồ uống)
-- Định nghĩa: Các loại nước uống, đá, kem sữa (nếu gắn liền đồ uống).
-- Các Attribute hợp lệ: Tương tự FOOD (QUALITY, STYLE&OPTIONS, PRICES).
-
-## D. AMBIENCE (Không gian)
-- Định nghĩa: Môi trường, thiết kế, trang trí, âm nhạc, ánh sáng, nhiệt độ, sự thoải mái.
-- Các Attribute hợp lệ:
-  1. GENERAL: Đánh giá chung về không gian (VD: "View đẹp", "Không gian ấm cúng", "Quán ồn ào", "Có điều hòa mát", "Quán sạch sẽ").
-  * Lưu ý: Attribute cho Ambience trong Guideline này chỉ dùng GENERAL (các attribute như Comfort/Decor được gộp vào General).
-
-## E. SERVICE (Phục vụ)
-- Định nghĩa: Nhân viên, thái độ, tốc độ phục vụ, quy trình (gọi món, thanh toán).
-- Các Attribute hợp lệ:
-  1. GENERAL: Tất cả các đánh giá về phục vụ (VD: "Nhân viên nhiệt tình", "Phục vụ chậm", "Thái độ lồi lõm").
-
-## F. LOCATION (Vị trí)
-- Định nghĩa: Địa điểm, đường đi, chỗ để xe (nếu nói về vị trí).
-- Các Attribute hợp lệ:
-  1. GENERAL: Vị trí thuận tiện/bất tiện (VD: "Quán dễ tìm", "Gần trung tâm", "Trong ngõ sâu").
-
-# 4. QUY TẮC QUAN TRỌNG (CRITICAL RULES)
-1. **Phân biệt RESTAURANT vs FOOD/DRINKS về GIÁ (PRICES):**
-   - Nếu nói giá chung chung ("Quán rẻ", "Ăn hết 200k") -> RESTAURANT#PRICES.
-   - Nếu nói giá món cụ thể ("Ly trà sữa 50k là đắt") -> DRINKS#PRICES.
-   - Nếu chỉ nêu giá tiền cụ thể mà không kèm tính từ đánh giá ("Bún chả 30k") -> Gán sentiment là NEUTRAL.
-
-2. **Phân biệt AMBIENCE vs FACILITIES (Tiện ích):**
-   - Trong Guideline này, các tiện ích như "Wifi", "Chỗ giữ xe", "Điều hòa" được phân loại như sau:
-     - [cite_start]"Wifi", "Chỗ giữ xe", "Có ai coi xe không" -> RESTAURANT#MISCELLANEOUS[cite: 303, 304].
-     - [cite_start]"Điều hòa", "Không gian máy lạnh", "Quán mát mẻ" -> AMBIENCE#GENERAL[cite: 168, 169].
-     - [cite_start]"Bàn ghế dầu mỡ", "Sàn nhà bẩn" -> AMBIENCE#GENERAL[cite: 176, 301].
-   - *Lưu ý đặc biệt:* Khác với một số chuẩn khác, chuẩn VLSP này gộp sự sạch sẽ của quán vào AMBIENCE#GENERAL, và các tiện ích phụ (xe, wifi) vào RESTAURANT#MISCELLANEOUS.
-
-3. **Phân biệt FOOD vs DRINKS:**
-   - Topping (trân châu, thạch) nếu review riêng lẻ -> FOOD.
-   - Nếu review chung trong ly nước ("Trà sữa nhiều thạch") -> DRINKS.
-
-4. **Về VIEW (Cảnh quan):**
-   - [cite_start]"View đẹp", "Nhìn ra phố" -> AMBIENCE#GENERAL (Không phải Location)[cite: 129].
-
-5. **Quy tắc Sentiment NEUTRAL:**
-   - Dùng cho câu kể lể sự việc, liệt kê món ăn, nêu giá tiền, nêu địa chỉ mà không thể hiện rõ thái độ khen/chê.
-   - Dùng cho câu có 2 vế đối lập cân bằng nhau ("Đồ ăn ngon nhưng đắt" -> Nếu tách riêng thì POS/NEG, nhưng nếu gán chung cho cả câu mà không tách được thì là NEUTRAL).
-
-# 5. MATRIX HỢP LỆ (VALID PAIRS SUMMARY)
-Chỉ sử dụng các cặp sau:
+[VALID PAIRS SUMMARY]
+ONLY use the following predefined pairs:
 - RESTAURANT: #GENERAL, #PRICES, #MISCELLANEOUS
 - FOOD: #QUALITY, #STYLE&OPTIONS, #PRICES
 - DRINKS: #QUALITY, #STYLE&OPTIONS, #PRICES
 - AMBIENCE: #GENERAL
 - SERVICE: #GENERAL
 - LOCATION: #GENERAL
+
+[ANNOTATION OBJECTIVE]
+Identify the pairs of (Aspect Category, Opinion Polarity) from customer reviews.
+
+[POLARITY DEFINITIONS]
+- POSITIVE: Praising, positive, satisfied.
+- NEGATIVE: Criticizing, negative, disappointed.
+- NEUTRAL: Objective description, stating factual information without explicit evaluative adjectives, or containing equally balanced praise and criticism for the exact same attribute (cancel-out pattern).
+
+[SECTION: LABEL TAXONOMY]
+
+[ENTITY: RESTAURANT]
+- Definition: Overall, general evaluation of the restaurant, or aspects that do not fall into the other 5 entities.
+- Valid Attributes:
+  - GENERAL: General comments, overarching reputation, holistic impressions, and explicit loyalty signals (e.g., statements indicating frequent visits, intention to return, regular customer status, or recommending the venue to others).
+  - PRICES: Overall pricing of the restaurant, total bill, promotions, or general affordability.
+  - MISCELLANEOUS: Safety, security, wifi, business hours/days, parking availability/fees, establishment history/age, number of branches, background music/audio, specific facility zones (e.g., photo areas), and hygiene of dining tools.
+
+[ENTITY: FOOD]
+- Definition: Related to food dishes and desserts.
+- Valid Attributes:
+  - QUALITY: Flavor, taste, cooking level, appealing texture, or food safety/cleanliness.
+  - STYLE&OPTIONS: Presentation, variety of dishes, menu options, portion size, missing expected items, or objective descriptions of cultural/regional cooking styles.
+  - PRICES: Price of a specific food item.
+
+[ENTITY: DRINKS]
+- Definition: Related to beverages and drinks.
+- Valid Attributes:
+  - QUALITY: Flavor, taste, or aroma of the drinks.
+  - STYLE&OPTIONS: Beverage options, toppings within the drink, or cup size.
+  - PRICES: Price of a specific drink.
+
+[ENTITY: AMBIENCE]
+- Definition: Environment, design, decoration, lighting, temperature, noise level, and overall restaurant cleanliness.
+- Valid Attributes:
+  - GENERAL: View, spaciousness (large/cramped interior), decoration, general cleanliness of the venue, noise level, or atmosphere.
+
+[ENTITY: SERVICE]
+- Definition: Staff, attitude, serving speed, and behavior.
+- Valid Attributes:
+  - GENERAL: Staff attitude, serving speed, professionalism, and behavior. Statements describing average, standard, or busy service without explicit frustration or complaint MUST be mapped to NEUTRAL.
+
+[ENTITY: LOCATION]
+- Definition: Location, accessibility, road, and surrounding area.
+- Valid Attributes:
+  - GENERAL: Easy/hard to find, distance, surrounding area conveniences, explicit addresses, street names, and landmarks.
+
+[SECTION: SPECIAL RULES AND DISAMBIGUATION]
+
+[RULE: STRICT DEDUPLICATION AND LABEL EXPLOSION CONTROL]
+- RULE: For any single review, each unique combination of (Entity, Attribute, Sentiment) MUST appear ONLY ONCE.
+- Even if a reviewer mentions "good food" multiple times in different sentences, only output one {FOOD#QUALITY, positive} label for the entire review.
+- Do not generate multiple identical labels for different dishes or drinks; aggregate them into a single representative label per entity-attribute-sentiment triple.
+- MACRO-AVERAGING CONFLICTING SENTIMENTS: If a reviewer expresses BOTH positive and negative opinions that map to the exact same Aspect Category (e.g., praising the quality of one dish but criticizing the quality of another dish, both mapping to FOOD#QUALITY), you MUST NOT split them into separate POSITIVE and NEGATIVE labels. Instead, you MUST aggregate these conflicting sentiments into a single NEUTRAL label (e.g., output only {FOOD#QUALITY, NEUTRAL}).
+- CANCEL-OUT PATTERN: If a single aspect receives a compromised evaluation (e.g., "high price but worth it" mapping to PRICES), it also resolves to a single NEUTRAL label.
+
+[RULE: SENSORY AND QUALITY ASSIGNMENT]
+Any adjectives describing a positive sensory experience, flavor, or appealing texture MUST default to QUALITY = POSITIVE (for FOOD or DRINKS), unless explicitly accompanied by a complaining or negative context. Food cleanliness maps to FOOD#QUALITY.
+
+[RULE: PORTIONS AND PRESENTATION]
+Any evaluations regarding portion size, food quantity, menu variety, or the absence of expected side dishes MUST be mapped to STYLE&OPTIONS (for FOOD or DRINKS). Do not confuse these attributes with QUALITY.
+
+[RULE: PRICES DISAMBIGUATION AND FACTUAL PRICING]
+Distinguish between specific and general pricing:
+- Specific item pricing maps to FOOD#PRICES or DRINKS#PRICES.
+- Overall bill, promotions, or general affordability maps to RESTAURANT#PRICES.
+- Factual Pricing (CRITICAL): If a specific price or price range is stated factually without any evaluative adjectives (e.g., "cheap", "expensive", "reasonable"), it MUST be classified as NEUTRAL. Do not infer positive or negative sentiment based merely on the number provided.
+
+[RULE: LOCATION VS. AMBIENCE]
+Do not confuse spatial constraints with geographical location.
+- "Hidden alleys", "hard to find", or long travel distances MUST be assigned LOCATION#GENERAL = NEGATIVE.
+- "Easy to find", "main street", or convenient proximity MUST be assigned LOCATION#GENERAL = POSITIVE.
+- Explicit addresses, pure navigational directions, street names, and neutral mentions of landmarks MUST be assigned LOCATION#GENERAL = NEUTRAL.
+- Descriptions of cramped, small, or spacious indoor areas map to AMBIENCE#GENERAL, not LOCATION#GENERAL.
+
+[RULE: FOOD VS. DRINKS BOUNDARY]
+When items are ambiguous:
+- Liquids served in cups/glasses (e.g., coffee, tea, juices, smoothies) map to DRINKS.
+- Items primarily eaten with utensils, even if they contain liquid or ice (e.g., soups, porridges, dessert bowls with solid chunks, shaved ice), map to FOOD.
+- When in doubt, rely on the verb used by the reviewer (drinking vs. eating).
+
+[RULE: NEUTRAL DETECTION AND CANCEL-OUT PATTERNS]
+- Factual Pricing: If a specific price or range is stated without evaluative adjectives (e.g., "cheap", "expensive"), it MUST be NEUTRAL.
+- Cancel-Out Pattern: If a reviewer provides a positive and a negative remark about the EXACT SAME attribute (e.g., "high price but worth it", "slow service but staff were nice", "small space but clean"), merge them into a single NEUTRAL label. Do NOT split into separate POSITIVE and NEGATIVE labels.
+- Objective Descriptions: Descriptions of cooking styles, "average" service, or standard facilities without explicit praise or complaint are NEUTRAL.
+
+[RULE:  STRICT TAXONOMY]
+Strictly adhere to the predefined entities ONLY. Output only the exact Entity and Attribute names.
+- NEVER use non-existent labels (e.g., FOOD#GENERAL, FOOD#MISCELLANEOUS, SERVICE#MIXED) or false entity (DRINK, EVENT,....).
+- NEVER include prefixes, letters, or numbering in the entity name.
+- Deduplication (CRITICAL): Each unique combination of (Entity, Attribute, Sentiment) MUST appear only ONCE per review. Do not duplicate identical labels, regardless of how many times the aspect is mentioned in the text.

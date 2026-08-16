@@ -1,5 +1,41 @@
-venv/
+# Secrets and local configuration
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-*.pdf
+*.py[cod]
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
 .vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local datasets (the reference guideline remains versioned)
+data/*
+!data/guideline.txt
+!data/.gitkeep
+ground_truth/
+merged_data/
+final_dataset/
+
+# Generated pipeline state and experiment outputs
+system_data/
+checkpoint/
+checkpoint-*/
+checkpoint*.zip
+result-data-foody-result/
+annotator_retry_failures.jsonl
+analyst_suggest_*.txt
+
+# Temporary files
+tempCodeRunnerFile.py
+*.log

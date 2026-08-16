@@ -1,100 +1,118 @@
+import json
 import os
 import sys
-import json
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
 
-from agents.guideline_agent import propose_guideline_update, append_to_guideline_file
-from rag_system.build_knowledge_base import build_vector_database
+from agents.guideline_agent import (
+    append_to_guideline_file,
+    propose_consolidated_guideline_update,
+)
 
-def interactive_update_guideline(root_cause_data: dict, current_guideline_chunk: str, target_domain: str, guideline_name: str):
-    """
-    Ham tuong tac: Lay de xuat luat moi va hoi nguoi dung co muon luu hay khong.
-    """
-    guideline_filepath = os.path.join(ROOT_DIR, "data", guideline_name)
-    db_directory = os.path.join(ROOT_DIR, "system_data", "chroma_db")
-    
-    review_id = root_cause_data.get("review_id", "Unknown")
-    print(f"\n[HE THONG] Dang phan tich va de xuat luat moi cho ca xung dot {review_id}...")
 
-    proposal_json = propose_guideline_update(root_cause_data, current_guideline_chunk, target_domain)
-
-    if not proposal_json:
-        print("-> Khong co de xuat cap nhat luat nao duoc tao ra.")
+def interactive_update_guideline_batch(
+    root_cause_records: list,
+    current_guideline: str,
+    target_domain: str,
+    active_guideline_path: str,
+):
+    """Run one Guideline Agent call and one human review for an outer cycle."""
+    proposal_json = propose_consolidated_guideline_update(
+        root_cause_records=root_cause_records,
+        current_guideline=current_guideline,
+        target_domain=target_domain,
+    )
+    if not proposal_json or proposal_json.get("error"):
+        print("[Guideline Agent] No valid consolidated report was produced.")
         return False
 
-    option_1 = proposal_json.get("option_1_direct_content", "")
-    option_2 = proposal_json.get("option_2_proposal_note", "")
-    target_section = proposal_json.get("target_section", "NEW RULES")
+    cause_dir = os.path.join(ROOT_DIR, "system_data", "cause")
+    os.makedirs(cause_dir, exist_ok=True)
+    report_path = os.path.join(cause_dir, "guideline_cycle_suggestion.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(proposal_json, f, ensure_ascii=False, indent=2)
 
-    print("\n" + "="*70)
-    print(" QUYET DINH CAP NHAT GUIDELINE ")
-    print("="*70)
-    print(f"Vi tri de xuat chen vao: {target_section}\n")
-    print("[OPTION 1 - DIRECT FIX] Noi dung san sang de chen:")
-    print(f"   {option_1}\n")
-    print("[OPTION 2 - CONSULTATION] Giai thich cua AI (Danh cho ban tham khao):")
-    print(f"   {option_2}\n")
-    print("="*70)
-    
-    print("Lua chon hanh dong:")
-    print("[1]. CHAP NHAN: Tu dong chen Option 1 vao file va nap lai vao Vector DB (Chroma).")
-    print("[2]. BO QUA / TU CHOI: Khong ghi file cho ca nay.")
-    
-    choice = input("Nhap lua chon cua ban (1 hoac 2): ").strip()
+    print("\n" + "=" * 70)
+    print(" CONSOLIDATED GUIDELINE REVIEW (HUMAN-IN-THE-LOOP) ")
+    print("=" * 70)
+    print(f"Root-cause records reviewed: {len(root_cause_records)}")
+    print(f"Cycle summary: {proposal_json.get('cycle_summary', '')}")
+    print(f"Full suggestion report: {report_path}")
 
-    if choice == '1':
-        print("\n[Tien trinh] Dang ghi luat vao file...")
-        success = append_to_guideline_file(proposal_json, guideline_filepath)
-        if success:
-            print("[Tien trinh] Dang bam (embed) va cap nhat lai Vector Database...")
-            build_vector_database(guideline_filepath, db_directory)
-            print("[HOAN TAT] Luat moi da duoc tham thau vao he thong RAG!")
-            return True
-        else:
-            print("[LOI] Cap nhat that bai do loi ghi file.")
-            return False
-            
-    elif choice == '2':
-        print("\n[TAM DUNG] He thong khong tu dong ghi ca nay.")
+    insights = proposal_json.get("key_insights", [])
+    if isinstance(insights, list):
+        for index, insight in enumerate(insights, start=1):
+            if not isinstance(insight, dict):
+                continue
+            print(
+                f"[{index}] {insight.get('recommended_action', 'NO_CHANGE')} | "
+                f"{insight.get('pattern', '')}"
+            )
+            print(f"    Rationale: {insight.get('rationale', '')}")
+
+    pending_file_path = os.path.join(ROOT_DIR, "system_data", "pending_rule.txt")
+    candidate_text = proposal_json.get("candidate_guideline_text", "")
+    with open(pending_file_path, "w", encoding="utf-8") as f:
+        f.write(candidate_text if isinstance(candidate_text, str) else "")
+
+    print(f"Editable candidate guideline text: {pending_file_path}")
+    print("Review or edit the candidate text, then choose once for this cycle:")
+    print("[1] Approve and apply the edited candidate text")
+    print("[2] Reject all proposed edits for this cycle")
+    choice = input("Enter choice (1 or 2): ").strip()
+
+    if choice != "1":
+        print("[HITL] Consolidated guideline update rejected.")
+        if os.path.exists(pending_file_path):
+            os.remove(pending_file_path)
         return False
-        
-    else:
-        print("\nLua chon khong hop le. Da huy thao tac cap nhat cho ca nay.")
+
+    with open(pending_file_path, "r", encoding="utf-8") as f:
+        human_edited_text = f.read().strip()
+    if not human_edited_text:
+        print("[HITL] No candidate text remains after review; guideline unchanged.")
+        os.remove(pending_file_path)
         return False
 
-def process_all_causes():
+    proposal_json["candidate_guideline_text"] = human_edited_text
+    proposal_json["action_type"] = "CONSOLIDATED UPDATE"
+    proposal_json["location_in_guideline"] = "HUMAN-APPROVED CYCLE UPDATE"
+    success = append_to_guideline_file(proposal_json, active_guideline_path)
+    if os.path.exists(pending_file_path):
+        os.remove(pending_file_path)
+    return success
+
+
+def process_all_causes(
+    active_guideline_path: str,
+    target_domain: str = "Restaurant",
+):
+    """Aggregate all root causes and trigger at most one human review."""
     cause_file_path = os.path.join(ROOT_DIR, "system_data", "cause", "cause_data.json")
-    
     if not os.path.exists(cause_file_path):
-        print(f"[LOI] Khong tim thay file {cause_file_path}. Hay chay Root Cause Agent truoc.")
-        return
+        print(f"[CYCLE UPDATE] No root-cause file found: {cause_file_path}")
+        return False
 
     with open(cause_file_path, "r", encoding="utf-8") as f:
         cause_list = json.load(f)
+    if not isinstance(cause_list, list) or not cause_list:
+        print("[CYCLE UPDATE] No root-cause records to consolidate.")
+        return False
 
-    if not cause_list:
-        print("[THONG BAO] Khong co du lieu xung dot nao de xu ly.")
-        return
+    try:
+        with open(active_guideline_path, "r", encoding="utf-8") as f:
+            full_guideline_content = f.read()
+    except OSError as exc:
+        print(f"[CYCLE UPDATE] Cannot read active guideline: {exc}")
+        return False
 
-    print(f"\n[BAT DAU] Tim thay {len(cause_list)} ca xung dot can xem xet.")
-    
-    mock_current_guideline = "- DRINKS#QUALITY: Dung cho cac mo ta ve chat luong do uong."
-    
-    for cause_data in cause_list:
-        if cause_data.get("need_update", False):
-            interactive_update_guideline(
-                root_cause_data=cause_data, 
-                current_guideline_chunk=mock_current_guideline, 
-                target_domain="Restaurant",
-                guideline_name="guideline.txt"
-            )
-        else:
-            review_id = cause_data.get("review_id", "Unknown")
-            print(f"\n[BO QUA] Ca {review_id} khong can cap nhat luat theo danh gia cua Root Cause Agent.")
-            
-    print("\n[HOAN THANH] Da duyet qua toan bo danh sach xung dot.")
-
-if __name__ == "__main__":
-    process_all_causes()
+    print(f"\n[CYCLE UPDATE] Consolidating {len(cause_list)} root-cause records.")
+    result = interactive_update_guideline_batch(
+        root_cause_records=cause_list,
+        current_guideline=full_guideline_content,
+        target_domain=target_domain,
+        active_guideline_path=active_guideline_path,
+    )
+    print("[CYCLE UPDATE] Completed one consolidated human review.")
+    return result

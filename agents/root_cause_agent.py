@@ -9,6 +9,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
 
 from utils.helpers import load_prompt_from_yaml
+from utils.llm_invoke_with_timeout import invoke_with_timeout_and_retry
 
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
@@ -42,50 +43,56 @@ def analyze_root_cause(debate_result: dict):
         azure_endpoint=azure_endpoint,
         api_version=api_version,
         azure_deployment=deployment_name,
-        temperature=0.2 
+        temperature=0.2
     )
- 
+
     review_text = debate_result.get("review_text", "")
-    
+
     # SUA LOI: Lay dung key "sample_id" tu file JSON, neu khong co moi lay "review_id"
     review_id = debate_result.get("sample_id", debate_result.get("review_id", "unknown_id"))
-    
+
     debate_history = json.dumps(debate_result.get("debate_summary", {}), ensure_ascii=False, indent=2)
 
     yaml_path = os.path.join(ROOT_DIR, "prompts", "agent_prompt.yaml")
     prompt_str = load_prompt_from_yaml(yaml_path, "root_cause_agent", "system_prompt")
     prompt = ChatPromptTemplate.from_template(prompt_str)
-    
-    chain = prompt | llm
-    
+
     print(f"\n[Root Cause Agent] Dang phan tich nguyen nhan xung dot cho ID: {review_id}...")
-    response = chain.invoke({
-        "review_text": review_text, 
+    payload = {
+        "review_text": review_text,
         "debate_history": debate_history
-    })
-    
-    parsed_result = clean_json_output(response.content)
-    
+    }
+    messages = prompt.format_messages(**payload)
+    response = invoke_with_timeout_and_retry(
+        llm,
+        messages,
+        agent_name="Root Cause Agent",
+        call_type="root_cause_agent",
+    )
+    output_text = response.content if (response is not None and hasattr(response, "content")) else ""
+
+    parsed_result = clean_json_output(output_text)
+
     if isinstance(parsed_result, dict):
         parsed_result["review_id"] = review_id
 
     cause_dir = os.path.join(ROOT_DIR, "system_data", "cause")
     os.makedirs(cause_dir, exist_ok=True)
     master_file_path = os.path.join(cause_dir, "cause_data.json")
-    
+
     existing_data = []
-    
+
     if os.path.exists(master_file_path):
         try:
             with open(master_file_path, "r", encoding="utf-8") as f:
                 existing_data = json.load(f)
                 if not isinstance(existing_data, list):
-                    existing_data = [] 
+                    existing_data = []
         except json.JSONDecodeError:
             existing_data = []
-            
+
     existing_data.append(parsed_result)
-    
+
     try:
         with open(master_file_path, "w", encoding="utf-8") as f:
             json.dump(existing_data, f, ensure_ascii=False, indent=4)
@@ -100,7 +107,7 @@ if __name__ == "__main__":
     if os.path.exists(test_json_path):
         with open(test_json_path, "r", encoding="utf-8") as f:
             sample_data = json.load(f)
-            
+
         result = analyze_root_cause(sample_data)
         print("\n[KET QUA PHAN TICH NGUYEN NHAN]")
         print(json.dumps(result, indent=2, ensure_ascii=False))
